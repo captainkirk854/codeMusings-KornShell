@@ -1,0 +1,624 @@
+#!/bin/bash
+#---------------------------------------------------------------------------------------------------------------------
+# Purpose : Project Navigation Utility
+#
+# Author      Date         Version     Comments                      
+# ------      ----------   -------     --------
+# Fraioli     2015-10-31      1.00     Created
+# Fraioli     2016-01-19      1.01     Updated
+#                                       > Updates for differences between BSD and Linux Unix systems:
+#                                         > Fix: Alteration for find command on Linux 
+#                                           e.g. 
+#                                             -type f instead of -type file
+#                                             find . -type directory -maxdepth 1  -> find . -maxdepth 1 -type d
+#                                       > Fix: Prompt initialisation
+#                                       > Upd: Better handling of working file suffix
+#---------------------------------------------------------------------------------------------------------------------
+
+#---------------------------------------------------------------------------------------------------------------------
+# Dependencies:
+#   > bash
+#   > IJ.sh (requirements: needs to be PAThd, initial Run Configuration template set up in IntelliJ)
+#---------------------------------------------------------------------------------------------------------------------
+
+#---------------------------------------------------------------------------------------------------------------------
+# Installation:
+#
+#  To ensure that this utility is accessible in all possible cases:
+# 
+#    1) If one does not already exist, create the following: 
+#       o $HOME/.bashrc
+#       o $HOME/.bash_profile
+#  
+#    2) In $HOME/.bashrc source this utility (pn) with an explicit path
+#       e.g.
+#          $HOME/.bashrc contains:
+#            source <Path to>/pn
+#            pn      #{optional - auto-launches on every kind of terminal initialisation}
+#  
+#    3) In $HOME/.bash_profile, source $HOME/.bashrc
+#       e.g.
+#          source $HOME/.bashrc
+#
+# Execution:
+#
+#  To ensure correct installation, either 
+#   > in an existing terminal, type bash
+#   > launch a terminal
+#   > pn -h  (if installation is good this should give a small help page)
+#   note: as pn is loaded into session memory, a which pn will yield no result
+#
+# Sample Usage:
+#
+#   > pn (auto-dialog should appear to define base directory for projects) or pn -b <base directory>
+#   > pn -p (lists available project directory(s))
+#   > pn -p [project directory] (sets the project context)
+#   > pn -d (lists the available working directory(s) containing suitably suffixed project file(s))
+#   > pn -d [subproject directory] (sets the working directory context)
+#   > pn -f [working file] (sets the working file context)
+#   > pn -v (lists the available navigation alias shortcuts)
+#   > pn -r (soft-reset: return to a regular environment whilst retaining project-context information)
+#   > pn -R (hard-reset: return to a regular environment and clears project-context information)
+#
+#---------------------------------------------------------------------------------------------------------------------
+
+#########################
+# General ..
+#########################
+set -o vi
+#set -x
+
+#########################
+# Functions
+#########################
+
+#-----------------------------------
+pnFnConfigurableVariables()
+#-----------------------------------
+{
+  toolConfigFilePrefix=pafTools_pn_
+  toolConfigFileSuffix=cfg
+  toolIJ=IJ.sh
+
+  pnOption_BaseDirectory='-b'
+  pnOption_ActiveProject='-p'
+  pnOption_ActiveProjectWorkingDirectory='-d'
+  pnOption_ActiveProjectWorkFile='-f'
+  pnOption_SoftReset='-r'
+  pnOption_HardReset='-R'
+  pnOption_Help='-?'
+  pnOption_ListEnvironmentVariables='-v'
+  pnOption_NoJump='-nj'
+  pnOption_IntelliJ='-ij'
+}
+
+#-----------------------------------
+pnFnInitialise()
+{
+  pn_ProductName="pn"
+  pn_Version="1.01"
+  pn_cfgFileBaseDirectory=$HOME/.$toolConfigFilePrefix\Base.$toolConfigFileSuffix
+  pn_cfgFileActiveProjectDirectory=$HOME/.$toolConfigFilePrefix\Project.$toolConfigFileSuffix
+  pn_cfgFileActiveProjectWorkingDirectory=$HOME/.$toolConfigFilePrefix\ProjectWorking.$toolConfigFileSuffix
+  pn_cfgFileActiveProjectWorkFile=$HOME/.$toolConfigFilePrefix\ActiveWorkFile.$toolConfigFileSuffix
+  pn_CurrentDir=$PWD
+}
+#-----------------------------------
+
+#-----------------------------------
+pnFnHandleWorkingFileSuffix()
+#-----------------------------------
+{
+  if [ -z $WorkingFileSuffix ] && [ -z $workingFileQuestionAsked ];then
+    echo "> Project file suffix?"
+    read  WorkingFileSuffix
+    workingFileQuestionAsked=.true.
+  fi
+}
+#-----------------------------------
+
+#-----------------------------------
+pnFnHandleProjectBaseDirectory()
+#-----------------------------------
+{
+  projectBaseDirectory=$1
+
+  strlen=`echo ${#projectBaseDirectory}`
+  if [ -d $projectBaseDirectory ] && [ $strlen -gt 0 ];then
+    cd $projectBaseDirectory
+    projectBaseDirectory=$PWD
+    cd - >/dev/null 2>&1
+    echo $projectBaseDirectory > $pn_cfgFileBaseDirectory
+    pnFnUnsetCfgEntities "-project_and_working_and_workfile"
+    pnVarBASE_DIRECTORY=`pnFnEvalConfigFile $pn_cfgFileBaseDirectory` 
+  else
+    echo "!! INVALID ENTRY OR NOT A PATH WE CAN TRAVEL TOGETHER !!"
+    echo ""
+  fi
+}
+
+#-----------------------------------
+pnFnEvalConfigFile()
+#-----------------------------------
+{
+  fileToRead=$1
+
+  if [ -f $fileToRead ];then   
+    fileContent=`cat $fileToRead`
+    fileContent=`eval echo "$fileContent"`
+    echo $fileContent
+  else
+    exit 1
+  fi
+}
+
+#-----------------------------------
+pnFnReadConfigFilesIntoVariables()
+#-----------------------------------
+{
+  pnVarBASE_DIRECTORY=`pnFnEvalConfigFile $pn_cfgFileBaseDirectory` 
+  pnVarACTIVE_PROJECT_DIRECTORY=`pnFnEvalConfigFile $pn_cfgFileActiveProjectDirectory`
+  pnVarACTIVE_PROJECT_WORKING_DIRECTORY=`pnFnEvalConfigFile $pn_cfgFileActiveProjectWorkingDirectory`
+  pnVarACTIVE_PROJECT_WORKFILE=`pnFnEvalConfigFile $pn_cfgFileActiveProjectWorkFile`
+
+  # error checking and config file control ..
+  if [ -z "$pnVarBASE_DIRECTORY" ];then
+    pnFnUnsetCfgEntities "-project_and_working_and_workfile"
+  elif [ -z "$pnVarACTIVE_PROJECT_DIRECTORY" ]; then
+    pnFnUnsetCfgEntities "-working_and_workfile"
+  elif [ -z "$pnVarACTIVE_PROJECT_WORKING_DIRECTORY" ]; then
+    pnFnUnsetCfgEntities "-workfile"
+  fi
+}
+
+#-----------------------------------
+pnFnConfigureUI()
+#-----------------------------------
+{
+  if [ -n "$pnVarBASE_DIRECTORY" ];then
+    alias cdb='cd $pnVarBASE_DIRECTORY; echo $PWD'
+    cd $pnVarBASE_DIRECTORY
+    prompt=`basename $PWD`
+  else
+    unalias cdb >/dev/null 2>&1
+  fi
+
+  if [ -n "$pnVarACTIVE_PROJECT_DIRECTORY" ];then
+    alias cdp='cd $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY; echo $PWD'
+    cd $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY
+    prompt=$prompt:`basename $PWD`
+  else
+    unalias cdp >/dev/null 2>&1
+  fi
+
+  if [ -n "$pnVarACTIVE_PROJECT_WORKING_DIRECTORY" ];then
+    alias cdw='cd $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY/$pnVarACTIVE_PROJECT_WORKING_DIRECTORY; echo $PWD'
+    cd $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY/$pnVarACTIVE_PROJECT_WORKING_DIRECTORY
+    prompt=$prompt:`basename $PWD`:"$WorkingFileSuffix"
+  else
+    unalias cdw >/dev/null 2>&1
+  fi
+
+  if [ -n "$pnVarACTIVE_PROJECT_WORKFILE" ];then
+    alias wrk='echo $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY/$pnVarACTIVE_PROJECT_WORKING_DIRECTORY/$pnVarACTIVE_PROJECT_WORKFILE;'
+    prompt=$prompt:`basename $pnVarACTIVE_PROJECT_WORKFILE .$WorkingFileSuffix`
+  else
+    unalias wrk >/dev/null 2>&1
+  fi
+
+  # finalise prompt format for all cases ..
+  prompt="[$prompt]> "
+}
+
+#-----------------------------------
+pnFnHandleOptionNoJump()
+#-----------------------------------
+{
+  for pnArg in $@
+  do
+    if [ $pnArg = $pnOption_NoJump ];then
+      cd $pn_CurrentDir
+    fi
+  done
+}
+
+#-----------------------------------
+pnFnHandleOptionIntelliJ()
+#-----------------------------------
+{
+  for pnArg in $@
+  do
+    if [ $pnArg = $pnOption_IntelliJ ];then
+      which $toolIJ > /dev/null 2>&1
+      if [ $? -eq 0 ];then
+        source $toolIJ
+        if [ $? -eq 0 ];then
+          echo "IntelliJ Run Configuration updated with new parameters"
+        else
+          echo "Failed to update IntelliJ Run Configuration with new parameters" 
+        fi
+      else
+        echo "!! Cannot find $toolIJ !!"
+      fi
+    fi
+  done
+}
+
+#-----------------------------------
+pnFnUnsetCfgEntities()
+#-----------------------------------
+{
+  unsetMode=$1
+  
+  if [ $unsetMode = '-all' ]; then
+    pnFnUnsetCfgEntity_BaseDirectory
+    pnFnUnsetCfgEntity_ProjectDirectory
+    pnFnUnsetCfgEntity_WorkingDirectory
+    pnFnUnsetCfgEntity_WorkFile
+  fi
+
+  if [ $unsetMode = '-project_and_working_and_workfile' ]; then
+    pnFnUnsetCfgEntity_ProjectDirectory
+    pnFnUnsetCfgEntity_WorkingDirectory
+    pnFnUnsetCfgEntity_WorkFile
+  fi
+
+  if [ $unsetMode = '-working_and_workfile' ]; then
+    pnFnUnsetCfgEntity_WorkingDirectory
+    pnFnUnsetCfgEntity_WorkFile
+  fi
+
+  if [ $unsetMode = '-workfile' ]; then
+    pnFnUnsetCfgEntity_WorkFile
+  fi 
+}
+
+#-----------------------------------
+pnFnUnsetCfgEntity_BaseDirectory()
+#-----------------------------------
+{
+  rm -rf "$pn_cfgFileBaseDirectory" > /dev/null 2>&1
+  unset pnVarBASE_DIRECTORY
+}
+
+#-----------------------------------
+pnFnUnsetCfgEntity_ProjectDirectory()
+#-----------------------------------
+{
+  rm -rf "$pn_cfgFileActiveProjectDirectory" > /dev/null 2>&1
+  unset pnVarACTIVE_PROJECT_DIRECTORY
+}
+
+#-----------------------------------
+pnFnUnsetCfgEntity_WorkingDirectory()
+#-----------------------------------
+{
+  rm -rf "$pn_cfgFileActiveProjectWorkingDirectory" > /dev/null 2>&1
+  unset pnVarACTIVE_PROJECT_WORKING_DIRECTORY
+}
+
+#-----------------------------------
+pnFnUnsetCfgEntity_WorkFile()
+#-----------------------------------
+{
+  rm -rf "$pn_cfgFileActiveProjectWorkFile" > /dev/null 2>&1
+  unset pnVarACTIVE_PROJECT_WORKFILE
+}
+
+#-----------------------------------
+pnFnSoftReset()
+#-----------------------------------
+{
+  unset option
+  unset optionValue
+  unset WorkingFileSuffix
+  unset workingFileQuestionAsked
+
+  unset pnVarBASE_DIRECTORY
+  unset pnVarACTIVE_PROJECT_DIRECTORY
+  unset pnVarACTIVE_PROJECT_WORKING_DIRECTORY
+  unset pnVarACTIVE_PROJECT_WORKFILE
+
+  cd $HOME
+  prompt='$PWD'
+}
+
+#-----------------------------------
+pnFnHardReset()
+#-----------------------------------
+{
+  pnFnUnsetCfgEntities "-all"
+  pnFnSoftReset
+}
+
+#-----------------------------------
+pnFnDisplayActiveVariables()
+#-----------------------------------
+{
+  lineSep="+------------------------------------------------------------------------------------------------------------+"
+  
+  echo $lineSep
+  pnFnEchoVar pn_ProductName
+  pnFnEchoVar pn_Version
+  pnFnEchoVar pn_cfgFileBaseDirectory
+  pnFnEchoVar pn_cfgFileActiveProjectDirectory
+  pnFnEchoVar pn_cfgFileActiveProjectWorkingDirectory
+  pnFnEchoVar pn_cfgFileActiveProjectWorkFile
+  echo $lineSep
+  echo ""
+
+  echo $lineSep
+  pnFnEchoVar WorkingFileSuffix
+  pnFnEchoVar pnVarBASE_DIRECTORY
+  pnFnEchoVar pnVarACTIVE_PROJECT_DIRECTORY
+  pnFnEchoVar pnVarACTIVE_PROJECT_WORKING_DIRECTORY
+  pnFnEchoVar pnVarACTIVE_PROJECT_WORKFILE
+  echo $lineSep
+  echo ""
+
+  echo $lineSep
+  pnFnEchoVar VENDOR_BIN
+  pnFnEchoVar PHP_BIN
+  pnFnEchoVar PATH_ORIGINAL
+  pnFnEchoVar PATH
+  echo $lineSep
+  echo ""
+
+  echo "alias for $pn_ProductName:"
+  alias | grep $pn_ProductName | cut -f2 -d" " | cut -f1 -d"="
+}
+
+#-----------------------------------
+pnFnEchoVar()
+#-----------------------------------
+{
+  varName=$1
+
+  # Use indirection to eval contents of env variable just from its name ..
+  varValue=${!varName}
+  echo "$varName = $varValue"
+}
+
+#-----------------------------------
+pnFnRefreshUserSettings()
+#-----------------------------------
+{
+  if [ ! -f $pn_cfgFileBaseDirectory ];then
+    prompt='$PWD'
+    echo "Type in full path to base directory .."
+    read projectBaseDirectory
+    pnFnHandleProjectBaseDirectory $projectBaseDirectory
+  else
+    pnFnReadConfigFilesIntoVariables
+  fi
+}
+
+#-----------------------------------
+pnFnHelp()
+#-----------------------------------
+{
+  toolOr="|"
+
+  toolOptions=""
+  toolOptions+=$pnOption_Help$toolOr
+  toolOptions+=$pnOption_BaseDirectory$toolOr
+  toolOptions+=$pnOption_ActiveProject$toolOr
+  toolOptions+=$pnOption_ActiveProjectWorkingDirectory$toolOr
+  toolOptions+=$pnOption_ActiveProjectWorkFile$toolOr
+  toolOptions+=$pnOption_NoJump$toolOr
+  toolOptions+=$pnOption_IntelliJ$toolOr
+  toolOptions+=$pnOption_SoftReset$toolOr
+  toolOptions+=$pnOption_HardReset$toolOr
+  toolOptions+=$pnOption_ListEnvironmentVariables
+
+  echo ""
+  echo "+-------------------------------------------------+"
+  echo "|       PROJECT NAVIGATOR HELP INFORMATION        |"
+  echo "|                                                 |"
+  echo "|    pn [$toolOptions]         |" 
+  echo "|                                                 |"
+  echo "|   Options:                                      |"
+  echo "|    no args : Set project environment, jump      |"
+  echo "|         $pnOption_Help : help                               |"
+  echo "|         $pnOption_BaseDirectory : Set Base Directory                 |"
+  echo "|         $pnOption_ActiveProject : Set Project Context                |"
+  echo "|         $pnOption_ActiveProjectWorkingDirectory : Set Active Directory               |"
+  echo "|         $pnOption_ActiveProjectWorkFile : Set/Unset Active File              |"
+
+  echo "|         $pnOption_ListEnvironmentVariables : List variables and dynamic alias   |"
+  echo "|         $pnOption_SoftReset : Soft Reset                         |"
+  echo "|         $pnOption_HardReset : Hard Reset                         |"
+  echo "|                                                 |"
+  echo "|        $pnOption_NoJump : Set project environment, no jump   |"
+  echo "|        $pnOption_IntelliJ : Set Storyplayer test in IntelliJ   |"
+  echo "+-------------------------------------------------+"
+  echo ""
+}
+
+
+#-----------------------------------
+pn()  # Main Entry point ..
+#-----------------------------------
+{
+  #-----------------------------
+  # initialise ..
+  #-----------------------------
+  pnFnHandleWorkingFileSuffix
+  pnFnConfigurableVariables
+  pnFnInitialise
+  prompt=`echo '$PWD' | sed s,'\[',,g | sed s,'\]',,g`
+
+  #-----------------------------
+  # set root directory for all project(s) ..
+  #-----------------------------
+  if [ $# -eq 0 ];then
+    pnFnRefreshUserSettings
+  else
+    #-----------------------------
+    # handle input arguments ..
+    #-----------------------------
+    option=$1
+    optionValue=$2
+  fi
+
+  #-----------------------------
+  #handle arguments ..
+  #-----------------------------
+  if [ -n "$option" ];then
+
+    #-----------------------------
+    # help ..
+    #-----------------------------
+    if [ $option = $pnOption_Help ];then
+      pnFnHelp
+    fi
+
+    #-----------------------------
+    # refresh settings on nojump .. 
+    #-----------------------------
+    if [ $# -eq 1 ] && 
+       [ $option = $pnOption_NoJump ];then
+       pnFnRefreshUserSettings
+    fi
+
+    #-----------------------------
+    # print project list .. 
+    #-----------------------------
+    if [ $# -eq 1 ] && 
+       [ $option = $pnOption_ActiveProject ];then
+      cd $pnVarBASE_DIRECTORY
+      find . -maxdepth 1 -type d | sed s,./,,g | grep -v "\."
+      cd - >/dev/null 2>&1
+    fi
+
+    #-----------------------------
+    # print those directories containing file(s) with $WorkingFileSuffix .. 
+    #-----------------------------
+    if [ $# -eq 1 ] && 
+       [ $option = $pnOption_ActiveProjectWorkingDirectory ] && 
+       [ -n "$pnVarACTIVE_PROJECT_DIRECTORY" ];then
+      if [ -d $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY ];then
+        cd $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY
+
+        # test if any appropriately suffixed file(s) can be found ..
+        find . -type f | grep .$WorkingFileSuffix > /dev/null 2>&1
+        if [ $? -eq 0 ];then
+          find . -type f | grep .$WorkingFileSuffix | xargs -n 1 dirname | sort -u | sed s,'\.\/',,g
+        else
+          find . -type f | xargs -n 1 dirname | sort -u | sed s,'\.\/',,g
+        fi
+
+        cd - >/dev/null 2>&1
+      fi
+    fi
+
+    #-----------------------------
+    # set base directory (alternative dialog) ..
+    #-----------------------------
+    if [ $option = $pnOption_BaseDirectory ] && 
+       [ -n "$optionValue" ];then
+      projectBaseDirectory=$optionValue
+      pnFnHandleProjectBaseDirectory $projectBaseDirectory
+    fi
+
+    #-----------------------------
+    # set active project ..
+    #-----------------------------
+    if [ $option = $pnOption_ActiveProject ] && 
+       [ -n "$optionValue" ];then
+      pnVarACTIVE_PROJECT_DIRECTORY=$optionValue
+      if [ -d $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY ];then
+        echo $pnVarACTIVE_PROJECT_DIRECTORY > $pn_cfgFileActiveProjectDirectory
+        pnFnUnsetCfgEntities "-working_and_workfile"
+      else
+        pnFnUnsetCfgEntities "-project_and_working_and_workfile"
+      fi
+    fi
+
+    #-----------------------------
+    # set working directory ..
+    #-----------------------------
+    if [ $option = $pnOption_ActiveProjectWorkingDirectory ] && 
+       [ -n "$optionValue" ] && 
+       [ -n "$pnVarACTIVE_PROJECT_DIRECTORY" ];then
+      pnVarACTIVE_PROJECT_WORKING_DIRECTORY=$optionValue
+      if [ -d $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY/$pnVarACTIVE_PROJECT_WORKING_DIRECTORY ];then
+        echo $pnVarACTIVE_PROJECT_WORKING_DIRECTORY > $pn_cfgFileActiveProjectWorkingDirectory
+        pnFnUnsetCfgEntities "-workfile"
+      else
+        pnFnUnsetCfgEntities "-working_and_workfile"
+      fi
+    fi
+
+    #-----------------------------
+    # set work file ..
+    #-----------------------------
+    if [ $option = $pnOption_ActiveProjectWorkFile ] && 
+       [ -n "$optionValue" ] && 
+       [ -n "$pnVarACTIVE_PROJECT_DIRECTORY" ] &&
+       [ -n "$pnVarACTIVE_PROJECT_WORKING_DIRECTORY" ] ;then
+      pnVarACTIVE_PROJECT_WORKFILE=$optionValue
+      if [ -f $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY/$pnVarACTIVE_PROJECT_WORKING_DIRECTORY/$pnVarACTIVE_PROJECT_WORKFILE ];then
+        echo $pnVarACTIVE_PROJECT_WORKFILE > $pn_cfgFileActiveProjectWorkFile
+      else
+        pnFnUnsetCfgEntities "-workfile"
+      fi
+    fi
+
+    #-----------------------------
+    # unset work file ..
+    #-----------------------------
+    if [ $option = $pnOption_ActiveProjectWorkFile ] &&
+       [ -z "$optionValue" ] &&
+       [ -n "$pnVarACTIVE_PROJECT_DIRECTORY" ] &&
+       [ -n "$pnVarACTIVE_PROJECT_WORKING_DIRECTORY" ] ;then
+        pnFnUnsetCfgEntities "-workfile"
+    fi
+
+    #-----------------------------
+    # list environment variable(s) ..
+    #-----------------------------
+    if [ $option = $pnOption_ListEnvironmentVariables ];then
+      echo ""
+      pnFnDisplayActiveVariables
+      echo ""
+    fi
+
+    #-----------------------------
+    # reset options ..
+    #-----------------------------
+    if [ $option = $pnOption_SoftReset ];then
+      pnFnSoftReset
+    elif [ $option = $pnOption_HardReset ];then
+      pnFnHardReset
+    fi
+
+  fi
+
+  #-----------------------------
+  # Pathing to pertinent tool(s) ..
+  #-----------------------------
+  if [ -z "$PATH_ORIGINAL" ];then
+    export PATH_ORIGINAL=$PATH
+  fi
+  if [ -n "$pnVarBASE_DIRECTORY" ];then
+    export VENDOR="$pnVarBASE_DIRECTORY/vendor"
+    export VENDOR_BIN="$VENDOR/bin"
+  else
+    unset VENDOR
+    unset VENDOR_BIN
+  fi
+  export PHP="/usr/local/opt/php56" #derived from $(brew --prefix homebrew/php/php56)
+  export PHP_BIN="$PHP/bin"
+  export TOOLS=$PHP_BIN:$VENDOR_BIN
+  export PATH="/usr/local/sbin:$TOOLS:$PATH_ORIGINAL"
+
+  #-----------------------------
+  # Finalise  ..
+  #-----------------------------
+  pnFnConfigureUI
+  pnFnHandleOptionNoJump $@
+  pnFnHandleOptionIntelliJ $@
+  PS1="$prompt"
+  unset option
+}
