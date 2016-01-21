@@ -15,6 +15,7 @@
 #                                       > Upd: Better handling of working file suffix
 # Fraioli     2016-01-20      1.02     Updated
 #                                       > Fix: Handle project directories that go missing
+#                                       > Fix: More accurate use of file suffix for active directory list
 #---------------------------------------------------------------------------------------------------------------------
 
 #---------------------------------------------------------------------------------------------------------------------
@@ -519,9 +520,9 @@ pn()  # Main Entry point ..
         cd $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY
 
         # test if any appropriately suffixed file(s) can be found ..
-        find . -type f | grep .$WorkingFileSuffix > /dev/null 2>&1
+        find . -type f | grep "\.$WorkingFileSuffix" > /dev/null 2>&1
         if [ $? -eq 0 ];then
-          find . -type f | grep .$WorkingFileSuffix | xargs -n 1 dirname | sort -u | sed s,'\.\/',,g
+          find . -type f | grep "\.$WorkingFileSuffix" | xargs -n 1 dirname | sort -u | sed s,'\.\/',,g
         else
           find . -type f | xargs -n 1 dirname | sort -u | sed s,'\.\/',,g
         fi
