@@ -13,6 +13,8 @@
 #                                             find . -type directory -maxdepth 1  -> find . -maxdepth 1 -type d
 #                                       > Fix: Prompt initialisation
 #                                       > Upd: Better handling of working file suffix
+# Fraioli     2016-01-20      1.02     Updated
+#                                       > Fix: Handle project directories that go missing
 #---------------------------------------------------------------------------------------------------------------------
 
 #---------------------------------------------------------------------------------------------------------------------
@@ -96,7 +98,7 @@ pnFnConfigurableVariables()
 pnFnInitialise()
 {
   pn_ProductName="pn"
-  pn_Version="1.01"
+  pn_Version="1.02"
   pn_cfgFileBaseDirectory=$HOME/.$toolConfigFilePrefix\Base.$toolConfigFileSuffix
   pn_cfgFileActiveProjectDirectory=$HOME/.$toolConfigFilePrefix\Project.$toolConfigFileSuffix
   pn_cfgFileActiveProjectWorkingDirectory=$HOME/.$toolConfigFilePrefix\ProjectWorking.$toolConfigFileSuffix
@@ -177,31 +179,47 @@ pnFnConfigureUI()
 {
   if [ -n "$pnVarBASE_DIRECTORY" ];then
     alias cdb='cd $pnVarBASE_DIRECTORY; echo $PWD'
-    cd $pnVarBASE_DIRECTORY
-    prompt=`basename $PWD`
+    if [ -d $pnVarBASE_DIRECTORY ];then
+      cd $pnVarBASE_DIRECTORY
+      prompt=`basename $PWD`
+    else
+      prompt="missing: *BASE DIRECTORY*"
+    fi
   else
     unalias cdb >/dev/null 2>&1
   fi
 
   if [ -n "$pnVarACTIVE_PROJECT_DIRECTORY" ];then
     alias cdp='cd $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY; echo $PWD'
-    cd $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY
-    prompt=$prompt:`basename $PWD`
+    if [ -d $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY ];then
+      cd $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY
+      prompt=$prompt:`basename $PWD`
+    else
+      prompt="missing: *PROJECT DIRECTORY*"
+    fi
   else
     unalias cdp >/dev/null 2>&1
   fi
 
   if [ -n "$pnVarACTIVE_PROJECT_WORKING_DIRECTORY" ];then
     alias cdw='cd $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY/$pnVarACTIVE_PROJECT_WORKING_DIRECTORY; echo $PWD'
-    cd $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY/$pnVarACTIVE_PROJECT_WORKING_DIRECTORY
-    prompt=$prompt:`basename $PWD`:"$WorkingFileSuffix"
+    if [ -d $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY/$pnVarACTIVE_PROJECT_WORKING_DIRECTORY ];then
+      cd $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY/$pnVarACTIVE_PROJECT_WORKING_DIRECTORY
+      prompt=$prompt:`basename $PWD`:"$WorkingFileSuffix"
+    else
+      prompt="missing: *WORKING DIRECTORY*"
+    fi
   else
     unalias cdw >/dev/null 2>&1
   fi
 
   if [ -n "$pnVarACTIVE_PROJECT_WORKFILE" ];then
-    alias wrk='echo $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY/$pnVarACTIVE_PROJECT_WORKING_DIRECTORY/$pnVarACTIVE_PROJECT_WORKFILE;'
-    prompt=$prompt:`basename $pnVarACTIVE_PROJECT_WORKFILE .$WorkingFileSuffix`
+    if [ -f $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY/$pnVarACTIVE_PROJECT_WORKING_DIRECTORY/$pnVarACTIVE_PROJECT_WORKFILE ];then
+      alias wrk='echo $pnVarBASE_DIRECTORY/$pnVarACTIVE_PROJECT_DIRECTORY/$pnVarACTIVE_PROJECT_WORKING_DIRECTORY/$pnVarACTIVE_PROJECT_WORKFILE;'
+      prompt=$prompt:`basename $pnVarACTIVE_PROJECT_WORKFILE .$WorkingFileSuffix`
+    else
+      prompt="missing: *WORK FILE*"
+    fi
   else
     unalias wrk >/dev/null 2>&1
   fi
