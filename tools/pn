@@ -16,6 +16,8 @@
 # Fraioli     2016-01-20      1.02     Updated
 #                                       > Fix: Handle project directories that go missing
 #                                       > Fix: More accurate use of file suffix for active directory list
+# Fraioli     2016-01-29      1.03     Updated
+#                                       > New: Custom Prompt option
 #---------------------------------------------------------------------------------------------------------------------
 
 #---------------------------------------------------------------------------------------------------------------------
@@ -82,24 +84,24 @@ pnFnConfigurableVariables()
   toolConfigFilePrefix=pafTools_pn_
   toolConfigFileSuffix=cfg
   toolIJ=IJ.sh
-
-  pnOption_BaseDirectory='-b'
   pnOption_ActiveProject='-p'
   pnOption_ActiveProjectWorkingDirectory='-d'
   pnOption_ActiveProjectWorkFile='-f'
-  pnOption_SoftReset='-r'
+  pnOption_BaseDirectory='-b'
+  pnOption_CustomPrompt='-%'
   pnOption_HardReset='-R'
   pnOption_Help='-?'
+  pnOption_IntelliJ='-ij'
   pnOption_ListEnvironmentVariables='-v'
   pnOption_NoJump='-nj'
-  pnOption_IntelliJ='-ij'
+  pnOption_SoftReset='-r'
 }
 
 #-----------------------------------
 pnFnInitialise()
 {
   pn_ProductName="pn"
-  pn_Version="1.02"
+  pn_Version="1.03"
   pn_cfgFileBaseDirectory=$HOME/.$toolConfigFilePrefix\Base.$toolConfigFileSuffix
   pn_cfgFileActiveProjectDirectory=$HOME/.$toolConfigFilePrefix\Project.$toolConfigFileSuffix
   pn_cfgFileActiveProjectWorkingDirectory=$HOME/.$toolConfigFilePrefix\ProjectWorking.$toolConfigFileSuffix
@@ -332,6 +334,7 @@ pnFnSoftReset()
   unset optionValue
   unset WorkingFileSuffix
   unset workingFileQuestionAsked
+  unset CustomPrompt
 
   unset pnVarBASE_DIRECTORY
   unset pnVarACTIVE_PROJECT_DIRECTORY
@@ -419,40 +422,44 @@ pnFnHelp()
   toolOr="|"
 
   toolOptions=""
-  toolOptions+=$pnOption_Help$toolOr
-  toolOptions+=$pnOption_BaseDirectory$toolOr
   toolOptions+=$pnOption_ActiveProject$toolOr
   toolOptions+=$pnOption_ActiveProjectWorkingDirectory$toolOr
   toolOptions+=$pnOption_ActiveProjectWorkFile$toolOr
-  toolOptions+=$pnOption_NoJump$toolOr
-  toolOptions+=$pnOption_IntelliJ$toolOr
-  toolOptions+=$pnOption_SoftReset$toolOr
+  toolOptions+=$pnOption_BaseDirectory$toolOr
+  toolOptions+=$pnOption_CustomPrompt$toolOr
   toolOptions+=$pnOption_HardReset$toolOr
-  toolOptions+=$pnOption_ListEnvironmentVariables
+  toolOptions+=$pnOption_Help$toolOr
+  toolOptions+=$pnOption_IntelliJ$toolOr
+  toolOptions+=$pnOption_ListEnvironmentVariables$toolOr
+  toolOptions+=$pnOption_NoJump$toolOr
+  toolOptions+=$pnOption_SoftReset$tool
 
   echo ""
   echo "+-------------------------------------------------+"
   echo "|       PROJECT NAVIGATOR HELP INFORMATION        |"
+  echo "|                                 Version: $pn_Version   |"
   echo "|                                                 |"
-  echo "|    pn [$toolOptions]         |" 
+  echo "|    pn [$toolOptions]      |" 
   echo "|                                                 |"
   echo "|   Options:                                      |"
   echo "|    no args : Set project environment, jump      |"
-  echo "|         $pnOption_Help : help                               |"
-  echo "|         $pnOption_BaseDirectory : Set Base Directory                 |"
+
   echo "|         $pnOption_ActiveProject : Set Project Context                |"
   echo "|         $pnOption_ActiveProjectWorkingDirectory : Set Active Directory               |"
   echo "|         $pnOption_ActiveProjectWorkFile : Set/Unset Active File              |"
-
-  echo "|         $pnOption_ListEnvironmentVariables : List variables and dynamic alias   |"
-  echo "|         $pnOption_SoftReset : Soft Reset                         |"
+  echo "|         $pnOption_BaseDirectory : Set Base Directory                 |"
+  echo "|         $pnOption_CustomPrompt : Custom Prompt                      |"
   echo "|         $pnOption_HardReset : Hard Reset                         |"
-  echo "|                                                 |"
-  echo "|        $pnOption_NoJump : Set project environment, no jump   |"
+  echo "|         $pnOption_Help : This help                          |"
   echo "|        $pnOption_IntelliJ : Set Storyplayer test in IntelliJ   |"
+  echo "|         $pnOption_ListEnvironmentVariables : List variables and dynamic alias   |"
+  echo "|        $pnOption_NoJump : Set project environment, no jump   |"
+  echo "|         $pnOption_SoftReset : Soft Reset                         |"
   echo "+-------------------------------------------------+"
   echo ""
 }
+
+
 
 
 #-----------------------------------
@@ -602,6 +609,13 @@ pn()  # Main Entry point ..
       pnFnDisplayActiveVariables
       echo ""
     fi
+    #-----------------------------
+    # custom prompt ..
+    #-----------------------------
+    if [ $option = $pnOption_CustomPrompt ];then
+      echo "> Custom Prompt?"
+      read CustomPrompt
+    fi
 
     #-----------------------------
     # reset options ..
@@ -638,6 +652,12 @@ pn()  # Main Entry point ..
   pnFnConfigureUI
   pnFnHandleOptionNoJump $@
   pnFnHandleOptionIntelliJ $@
-  PS1="$prompt"
   unset option
+
+  # Set prompt ..
+  if [ -z "$CustomPrompt" ];then
+    PS1="$prompt"
+  else
+    PS1="$CustomPrompt "
+  fi
 }
