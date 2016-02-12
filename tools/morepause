@@ -1,0 +1,74 @@
+#!/bin/bash
+#---------------------------------------------------------------------------------------------------------------------
+# Purpose : Read from piped standard input and perform a more-like behaviour with added auto-pause that auto-adjusts
+#           to the terminal's current window size for set period before auto-continuation.
+#
+# Usage   : cat myfile.txt | morepause   # no pause time prompts interactive mode using more-like behaviour
+#           cat myfile.txt | morepause 5 # pauses 5 seconds before continuing with the next stream section
+#            > To quit (in either scenario): CTRL +C
+#           export DEBUG_MOREPAUSE=1/unset DEBUG_MOREPAUSE to turn on/off some low-level debug
+#
+#
+# Author      Date         Version     Comments
+# ------      ----------   -------     --------
+# Fraioli     2016-01-31       1.0     Created
+#---------------------------------------------------------------------------------------------------------------------
+
+
+#-----------------------------------------------
+# FUNCTIONS #
+#-----------------------------------------------
+
+
+
+
+#########################
+# Main
+#########################
+
+
+#-----------------------------------
+# Assign input arguments ..
+#-----------------------------------
+if [ $# -eq 1 ];then
+  sleepTime=$1
+else
+  sleepTime=0
+fi
+
+
+#-----------------------------------
+# Initialise ..
+#-----------------------------------
+currentRecordNumber=0
+
+
+#-----------------------------------
+#Run ..
+#-----------------------------------
+# process through incoming stream ..
+while read streamRecord
+do
+  # evaluate current terminal size ..
+  termCols=`tput cols`
+  termRows=`tput lines`
+
+  # display current stream record ..
+  currentRecordNumber=$(($currentRecordNumber + 1)) # note: $(( )) syntax does arithmetic evaluation of contents - more practical than eval
+  if [ -n "$DEBUG_MOREPAUSE" ];then
+    echo "[($termCols)x($termRows): $currentRecordNumber] $streamRecord"
+  else
+    echo "$streamRecord"
+  fi
+
+  # if recordnumber has reached bottom of terminal, pause ..
+  if [ $(($currentRecordNumber % $(($termRows - 1)))) -eq 0 ] ;then
+    if [ $sleepTime -gt 0 ];then
+      sleep $sleepTime
+    else
+      # behave more more-like ..
+      echo -e "\e[7m--More--[Press enter to continue, 'CTRL +C' to quit.]\e[0m"
+      read overrideStreamInputWithUserInput < /dev/tty
+    fi
+  fi
+done < "/dev/stdin"
